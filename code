@@ -12,7 +12,7 @@ library(caret)
 library(irlba)
 library(randomForest)
 library(doSNOW)
-setwd("D:/brian/leraning/R/machine-learning/projects/Competitions/Cuisines")
+
 load_json <- function(filename){
   js <- read_json(filename)
   data.table(id =sapply(js,'[[','id'),
