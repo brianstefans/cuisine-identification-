@@ -1,1 +1,108 @@
+library(jsonlite)
+library(text2vec)
+library(tidyverse)
+library(rjson)
+library(tidytext)
+library(tm)
+library(data.table)
+library(wordcloud)
+library(topicmodels)
+library(quanteda)
+library(caret)
+library(irlba)
+library(randomForest)
+library(doSNOW)
+setwd("D:/brian/leraning/R/machine-learning/projects/Competitions/Cuisines")
+load_json <- function(filename){
+  js <- read_json(filename)
+  data.table(id =sapply(js,'[[','id'),
+             cuisine = sapply(js,'[[','cuisine'),
+             ingredients =sapply(js,'[[','ingredients'))
+}  
+train <- load_json("train.json")
+test <- load_json("test.json")
 
+head(train.tokens,2)
+nrow(train)
+
+#CLEANING THE DATA
+train$ingredients <- paste(train$ingredients,sep = ",")
+train$ingredients <- gsub("list\\(","",train$ingredients)
+train$ingredients <- gsub("c\\(","",train$ingredients)
+train$ingredients <- gsub("\\)","",train$ingredients)
+train$ingredients <- gsub('\"',"",train$ingredients)
+train$ingredients <- gsub('\\\\',"",train$ingredients)
+
+text.clean <- function(x){
+  x <- tokens(x, what = "word",
+              remove_numbers = T, remove_punct = T,
+              remove_symbols = T,remove_hyphens = T)
+  x <- tokens_tolower(x)
+  x <- tokens_select(x,stopwords(),selection = "remove")
+  #x <- tokens_wordstem(x,language = "english")
+}
+train.tokens <- text.clean(train$ingredients)
+
+#to  a document matrix
+train.tokens.dfm <- as.matrix(dfm(train.tokens,tolower = F))
+
+#checking of the rows are still the same the binding 
+dim(train.tokens.dfm)
+train.tokens.dfm <- cbind(cuisine = train$cuisine,as.data.frame(train.tokens.dfm))
+head(train.tokens.dfm,2)
+
+#cross validation 
+cv.folds <- createMultiFolds(train.tokens.dfm$cuisine, k=4, times = 3)
+cv.cntrl <- trainControl(method = "repeatedcv" , number = 4, repeats = 3,
+                         index= cv.folds)
+start.time <- Sys.time()
+#create a cluste to work on 10 logiCALL CORES
+cl <- makeCluster(1,type = "SOCK")
+registerDoSNOW(cl)
+rpart.cv.1 <- train(cuisine ~ .,data = train.tokens.dfm, method = "rpart",
+                    trControl = cv.cntrl, tunneLength = 7)
+#stop cluster
+stopCluster(cl)
+#total time
+total.time <- Sys.time() - start.time
+#results
+rpart.cv.1
+
+#using text2vec
+library(text2vec)
+tv.train <- itoken(train$ingredients,preprocessor = tolower,
+                   tokenizer = word_tokenizer,
+                   ids = train$id,
+                   progressbar = F)
+vocab <- create_vocabulary(tv.train)
+vocab
+
+#pruning the words
+stop_words <- stopwords()
+vocab1 <- create_vocabulary(tv.train,stopwords = stop_words)
+
+pruned_vocab <- prune_vocabulary(vocab1,
+                                 term_count_min = 20,
+                                 doc_proportion_max = 0.5,
+                                 doc_proportion_min = 0.001)
+vectorizer1 <- vocab_vectorizer(pruned_vocab)
+dtm_train1 <- create_dtm(tv.train,vectorizer1)
+dim(dtm_train1)
+ # creating the dtm 
+vectorizer <- vocab_vectorizer(vocab)
+t1  <- Sys.time()
+dtm_train <- create_dtm(tv.train,vectorizer)
+print(difftime(Sys.time(),t1,units = "sec"))
+dim(dtm_train)
+
+# first model 
+NFOLDS <- 4
+t1 <- Sys.time()
+glmnet_classifier <- cv.glmnet(x=dtm_train1,y = train[["cuisine"]],
+                               family = "multinomial",
+                               alpha = 1,
+                               type.measure = "auc",
+                               nfolds = NFOLDS,
+                               thresh= 1e-3,
+                               maxit= 1e3)
+print(difftime(Sys.time(),t1,units = "sec"))
