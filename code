@@ -68,41 +68,4 @@ total.time <- Sys.time() - start.time
 #results
 rpart.cv.1
 
-#using text2vec
-library(text2vec)
-tv.train <- itoken(train$ingredients,preprocessor = tolower,
-                   tokenizer = word_tokenizer,
-                   ids = train$id,
-                   progressbar = F)
-vocab <- create_vocabulary(tv.train)
-vocab
 
-#pruning the words
-stop_words <- stopwords()
-vocab1 <- create_vocabulary(tv.train,stopwords = stop_words)
-
-pruned_vocab <- prune_vocabulary(vocab1,
-                                 term_count_min = 20,
-                                 doc_proportion_max = 0.5,
-                                 doc_proportion_min = 0.001)
-vectorizer1 <- vocab_vectorizer(pruned_vocab)
-dtm_train1 <- create_dtm(tv.train,vectorizer1)
-dim(dtm_train1)
- # creating the dtm 
-vectorizer <- vocab_vectorizer(vocab)
-t1  <- Sys.time()
-dtm_train <- create_dtm(tv.train,vectorizer)
-print(difftime(Sys.time(),t1,units = "sec"))
-dim(dtm_train)
-
-# first model 
-NFOLDS <- 4
-t1 <- Sys.time()
-glmnet_classifier <- cv.glmnet(x=dtm_train1,y = train[["cuisine"]],
-                               family = "multinomial",
-                               alpha = 1,
-                               type.measure = "auc",
-                               nfolds = NFOLDS,
-                               thresh= 1e-3,
-                               maxit= 1e3)
-print(difftime(Sys.time(),t1,units = "sec"))
